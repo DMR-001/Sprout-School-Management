@@ -10,6 +10,7 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [markData, setMarkData] = useState({});
+  const [notification, setNotification] = useState(null);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -121,6 +122,11 @@ const TeacherDashboard = () => {
     logout();
   };
 
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   const updateAttendance = async (studentEmail, date, status) => {
     try {
       // Find the student by parent email
@@ -131,11 +137,18 @@ const TeacherDashboard = () => {
           attendance: { status, date: date || new Date().toISOString().split('T')[0] }
         });
         
+        // Show success notification
+        showNotification(
+          `Attendance marked ${status.toUpperCase()} for ${student.name}`,
+          'success'
+        );
+        
         // Refresh students list using the helper function
         await refreshStudentsData();
       }
     } catch (error) {
       console.error('Error updating attendance:', error);
+      showNotification('Error updating attendance. Please try again.', 'error');
     }
   };
 
@@ -346,6 +359,22 @@ const TeacherDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg ${
+          notification.type === 'success' 
+            ? 'bg-green-600 text-white' 
+            : 'bg-red-600 text-white'
+        }`}>
+          <div className="flex items-center">
+            <span className="mr-2">
+              {notification.type === 'success' ? '✓' : '✕'}
+            </span>
+            {notification.message}
+          </div>
+        </div>
+      )}
+      
       {/* Professional Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-6 py-4">

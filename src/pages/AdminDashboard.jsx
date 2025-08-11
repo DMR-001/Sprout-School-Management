@@ -17,7 +17,10 @@ const AdminDashboard = () => {
     addFeePayment
   } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeStudentClassTab, setActiveStudentClassTab] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState(null);
   const [students, setStudents] = useState([]);
+  const [studentsByClass, setStudentsByClass] = useState({});
   const [users, setUsers] = useState([]);
   const [availableTeachers, setAvailableTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +75,24 @@ const AdminDashboard = () => {
         })) || [];
         
         setStudents(formattedStudents);
+        
+        // Group students by class
+        const grouped = formattedStudents.reduce((acc, student) => {
+          const className = student.class;
+          if (!acc[className]) {
+            acc[className] = [];
+          }
+          acc[className].push(student);
+          return acc;
+        }, {});
+        
+        setStudentsByClass(grouped);
+        
+        // Set default active class tab
+        const availableClasses = Object.keys(grouped);
+        if (availableClasses.length > 0 && !activeStudentClassTab) {
+          setActiveStudentClassTab(availableClasses[0]);
+        }
       } catch (error) {
         console.error('Error loading students from Supabase:', error);
         // Fallback to demo students if Supabase fails
@@ -309,57 +330,101 @@ const AdminDashboard = () => {
         );
 
       case 'students':
+        const availableClasses = Object.keys(studentsByClass);
+        const currentClassStudents = studentsByClass[activeStudentClassTab] || [];
+        
         return (
-          <div className="bg-white rounded-lg border">
-            <div className="p-6 border-b">
-              <h3 className="text-xl font-semibold text-gray-800">Student Management</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attendance</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fees</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {students.map((student) => (
-                    <tr key={student.id} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{student.name}</div>
-                          <div className="text-sm text-gray-500">{student.rollNumber}</div>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {student.class}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          student.attendance.percentage >= 90 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {student.attendance.percentage}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">₹{student.fees.paid}/₹{student.fees.total}</div>
-                        {student.fees.pending > 0 && (
-                          <div className="text-xs text-red-600">₹{student.fees.pending} pending</div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-900">{student.parent.name}</div>
-                        <div className="text-sm text-gray-500">{student.parent.email}</div>
-                      </td>
-                    </tr>
+          <div className="space-y-6">
+            {/* Class Tabs */}
+            {availableClasses.length > 1 && (
+              <div className="border-b border-gray-200">
+                <nav className="flex space-x-8" aria-label="Class Tabs">
+                  {availableClasses.map((className) => (
+                    <button
+                      key={className}
+                      onClick={() => setActiveStudentClassTab(className)}
+                      className={`py-3 px-1 border-b-2 font-medium text-sm ${
+                        activeStudentClassTab === className
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {className}
+                      <span className="ml-2 bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
+                        {studentsByClass[className].length}
+                      </span>
+                    </button>
                   ))}
-                </tbody>
-              </table>
+                </nav>
+              </div>
+            )}
+            
+            {/* Students Table */}
+            <div className="bg-white rounded-lg border">
+              <div className="p-6 border-b">
+                <h3 className="text-xl font-semibold text-gray-800">
+                  Student Management - {activeStudentClassTab}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {currentClassStudents.length} student{currentClassStudents.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Class</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attendance</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fees</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Parent</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {currentClassStudents.map((student) => (
+                      <tr key={student.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                            <div className="text-sm text-gray-500">{student.rollNumber}</div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {student.class}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            student.attendance.percentage >= 90 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {student.attendance.percentage}%
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">₹{student.fees.paid}/₹{student.fees.total}</div>
+                          {student.fees.pending > 0 && (
+                            <div className="text-xs text-red-600">₹{student.fees.pending} pending</div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{student.parent.name}</div>
+                          <div className="text-sm text-gray-500">{student.parent.email}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => setSelectedStudent(student)}
+                            className="text-blue-600 hover:text-blue-900 mr-3"
+                          >
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
@@ -1046,6 +1111,124 @@ const AdminDashboard = () => {
             {renderTabContent()}
           </div>
         </div>
+
+        {/* Student Management Modal */}
+        {selectedStudent && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-xl font-semibold">Manage {selectedStudent.name}</h3>
+                <button
+                  onClick={() => setSelectedStudent(null)}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-8">
+                {/* Student Information */}
+                <div className="space-y-6">
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-800 mb-3">Student Information</h4>
+                    <div className="space-y-2 text-sm">
+                      <p><span className="font-medium">Name:</span> {selectedStudent.name}</p>
+                      <p><span className="font-medium">Class:</span> {selectedStudent.class}</p>
+                      <p><span className="font-medium">Roll Number:</span> {selectedStudent.rollNumber}</p>
+                      <p><span className="font-medium">Attendance:</span> {selectedStudent.attendance.percentage}%</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-800 mb-3">Parent Information</h4>
+                    <div className="space-y-2 text-sm">
+                      <p><span className="font-medium">Name:</span> {selectedStudent.parent.name}</p>
+                      <p><span className="font-medium">Email:</span> {selectedStudent.parent.email}</p>
+                      <p><span className="font-medium">Phone:</span> {selectedStudent.parent.phone}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fees Management */}
+                <div className="space-y-6">
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-800 mb-3">Fees Information</h4>
+                    <div className="space-y-2 text-sm">
+                      <p><span className="font-medium">Total Fees:</span> ₹{selectedStudent.fees.total.toLocaleString()}</p>
+                      <p><span className="font-medium">Paid:</span> ₹{selectedStudent.fees.paid.toLocaleString()}</p>
+                      <p><span className="font-medium text-red-600">Pending:</span> ₹{selectedStudent.fees.pending.toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white border rounded-lg p-4">
+                    <h4 className="font-medium text-gray-800 mb-4">Update Fees</h4>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Total Annual Fees (₹)
+                        </label>
+                        <input
+                          type="number"
+                          defaultValue={selectedStudent.fees.total}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Enter total fees"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Payment Amount (₹)
+                        </label>
+                        <input
+                          type="number"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Enter payment amount"
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Payment Method
+                        </label>
+                        <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                          <option value="">Select Payment Method</option>
+                          <option value="cash">Cash</option>
+                          <option value="card">Card</option>
+                          <option value="upi">UPI</option>
+                          <option value="bank_transfer">Bank Transfer</option>
+                        </select>
+                      </div>
+                      
+                      <div className="flex space-x-3">
+                        <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex-1">
+                          Record Payment
+                        </button>
+                        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex-1">
+                          Update Total Fees
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-yellow-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-gray-800 mb-3">Quick Actions</h4>
+                    <div className="flex flex-wrap gap-2">
+                      <button className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">
+                        Send Fee Reminder
+                      </button>
+                      <button className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">
+                        Generate Receipt
+                      </button>
+                      <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">
+                        View Payment History
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

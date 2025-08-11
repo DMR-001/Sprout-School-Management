@@ -51,22 +51,29 @@ const Footer = () => {
           {/* Contact Information */}
           <div>
             <h3 className="text-xl font-bold text-gray-800 mb-4">Contact Information</h3>
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="font-semibold text-gray-700 mb-1">Address:</p>
-                <p className="text-gray-600 leading-relaxed">
+            <div className="space-y-4 text-sm">
+              {/* Meerpet Location */}
+              <div className="border-l-4 border-red-500 pl-3">
+                <p className="font-semibold text-red-600 mb-2">MEERPET</p>
+                <p className="text-gray-600 leading-relaxed mb-2">
                   #14-218/5, Raghava Nagar Colony,<br />
-                  TKR College Back Gate,<br />
-                  Meerpet, Hyderabad, Telangana 500097
+                  Meerpet, Hyderabad
                 </p>
+                <p className="text-gray-600 font-medium">📞 97047 17264 | 70322 52030</p>
               </div>
               
-              <div>
-                <p className="font-semibold text-gray-700 mb-1">Phone:</p>
-                <p className="text-gray-600">+91 97047 17264, +91 70322 52030</p>
+              {/* Nadergul Location */}
+              <div className="border-l-4 border-red-500 pl-3">
+                <p className="font-semibold text-red-600 mb-2">NADERGUL</p>
+                <p className="text-gray-600 leading-relaxed mb-2">
+                  Plot No - 5, Road No - 5,<br />
+                  Sri Vaikunta Puram Colony,<br />
+                  Beside Prathyusha Hospital, Nadergul
+                </p>
+                <p className="text-gray-600 font-medium">📞 90004 11175 | 91004 05566</p>
               </div>
               
-              <div>
+              <div className="pt-2">
                 <p className="font-semibold text-gray-700 mb-1">Email:</p>
                 <p>
                   <a href="mailto:info@sprouthyd.in" className="text-blue-600 hover:text-blue-800 transition-colors">
