@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 const TeacherDashboard = () => {
-  const { userData, logout, getTeacherClasses, getStudentsByTeacher, updateStudentData, teacherClassMapping } = useAuth();
+  const { userData, logout, getTeacherClasses, getTeacherClass, getStudentsByTeacher, updateStudentData, teacherClassMapping } = useAuth();
   const [activeTab, setActiveTab] = useState('students');
+  const [activeClassTab, setActiveClassTab] = useState('');
   const [students, setStudents] = useState([]);
+  const [studentsByClass, setStudentsByClass] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [markData, setMarkData] = useState({});
@@ -40,10 +42,27 @@ const TeacherDashboard = () => {
                 return acc;
               }, {}) || {}
             }));
+            
+            // Group students by class
+            const grouped = formattedStudents.reduce((acc, student) => {
+              if (!acc[student.class]) {
+                acc[student.class] = [];
+              }
+              acc[student.class].push(student);
+              return acc;
+            }, {});
+            
             setStudents(formattedStudents);
+            setStudentsByClass(grouped);
+            
+            // Set the first class as active if not already set
+            if (!activeClassTab && Object.keys(grouped).length > 0) {
+              setActiveClassTab(Object.keys(grouped)[0]);
+            }
           } else {
             console.log('No classes assigned to teacher:', userData.email);
             setStudents([]);
+            setStudentsByClass({});
           }
         } catch (error) {
           console.error('Error loading students:', error);
@@ -55,6 +74,48 @@ const TeacherDashboard = () => {
 
     loadStudents();
   }, [userData, getTeacherClasses, getStudentsByTeacher, teacherClassMapping]);
+
+  // Helper function to refresh students data
+  const refreshStudentsData = async () => {
+    const allStudents = await getStudentsByTeacher(userData.email);
+    const formattedStudents = allStudents.map(student => ({
+      id: student.id,
+      name: student.name,
+      class: student.class,
+      rollNumber: student.roll_number,
+      parentEmail: student.parent_email,
+      photo: student.photo_url || '👤',
+      attendance: {
+        present: student.attendance?.filter(a => a.status === 'present').length || 0,
+        total: student.attendance?.length || 0,
+        percentage: student.attendance?.length > 0 ? 
+          Math.round((student.attendance.filter(a => a.status === 'present').length / student.attendance.length) * 100) : 0
+      },
+      academics: student.grades?.reduce((acc, grade) => {
+        acc[grade.subject] = { grade: grade.grade, score: grade.score };
+        return acc;
+      }, {}) || {}
+    }));
+
+    // Group students by class
+    const grouped = formattedStudents.reduce((acc, student) => {
+      if (!acc[student.class]) {
+        acc[student.class] = [];
+      }
+      acc[student.class].push(student);
+      return acc;
+    }, {});
+
+    setStudents(formattedStudents);
+    setStudentsByClass(grouped);
+    
+    // Ensure activeClassTab is still valid, or set to first available class
+    if (!activeClassTab || !grouped[activeClassTab]) {
+      if (Object.keys(grouped).length > 0) {
+        setActiveClassTab(Object.keys(grouped)[0]);
+      }
+    }
+  };
 
   const handleLogout = () => {
     logout();
@@ -70,28 +131,8 @@ const TeacherDashboard = () => {
           attendance: { status, date: date || new Date().toISOString().split('T')[0] }
         });
         
-        // Refresh students list
-        const teacherClass = getTeacherClass(userData.email);
-        const classStudents = await getStudentsByClass(teacherClass);
-        const formattedStudents = classStudents.map(student => ({
-          id: student.id,
-          name: student.name,
-          class: student.class,
-          rollNumber: student.roll_number,
-          parentEmail: student.parent_email,
-          photo: student.photo_url || '👤',
-          attendance: {
-            present: student.attendance?.filter(a => a.status === 'present').length || 0,
-            total: student.attendance?.length || 0,
-            percentage: student.attendance?.length > 0 ? 
-              Math.round((student.attendance.filter(a => a.status === 'present').length / student.attendance.length) * 100) : 0
-          },
-          academics: student.grades?.reduce((acc, grade) => {
-            acc[grade.subject] = { grade: grade.grade, score: grade.score };
-            return acc;
-          }, {}) || {}
-        }));
-        setStudents(formattedStudents);
+        // Refresh students list using the helper function
+        await refreshStudentsData();
       }
     } catch (error) {
       console.error('Error updating attendance:', error);
@@ -107,28 +148,8 @@ const TeacherDashboard = () => {
           academics: { [subject]: { grade, score } }
         });
         
-        // Refresh students list
-        const teacherClass = getTeacherClass(userData.email);
-        const classStudents = await getStudentsByClass(teacherClass);
-        const formattedStudents = classStudents.map(student => ({
-          id: student.id,
-          name: student.name,
-          class: student.class,
-          rollNumber: student.roll_number,
-          parentEmail: student.parent_email,
-          photo: student.photo_url || '👤',
-          attendance: {
-            present: student.attendance?.filter(a => a.status === 'present').length || 0,
-            total: student.attendance?.length || 0,
-            percentage: student.attendance?.length > 0 ? 
-              Math.round((student.attendance.filter(a => a.status === 'present').length / student.attendance.length) * 100) : 0
-          },
-          academics: student.grades?.reduce((acc, grade) => {
-            acc[grade.subject] = { grade: grade.grade, score: grade.score };
-            return acc;
-          }, {}) || {}
-        }));
-        setStudents(formattedStudents);
+        // Refresh students list using the helper function
+        await refreshStudentsData();
         
         alert(`Updated ${subject} grade for ${student.name}: ${grade} (${score}%)`);
       }
@@ -138,7 +159,7 @@ const TeacherDashboard = () => {
     }
   };
 
-  const addAchievement = (studentEmail, achievement) => {
+  const addAchievement = async (studentEmail, achievement) => {
     const student = students.find(s => s.parentEmail === studentEmail);
     if (student) {
       const newActivity = {
@@ -149,14 +170,12 @@ const TeacherDashboard = () => {
       
       const updatedActivities = [newActivity, ...student.recentActivities];
       
-      updateStudentData(studentEmail, {
+      await updateStudentData(studentEmail, {
         recentActivities: updatedActivities
       });
       
-      // Refresh students list
-      const teacherClass = getTeacherClass(userData.email);
-      const updatedStudents = getStudentsByClass(teacherClass);
-      setStudents(updatedStudents);
+      // Refresh students list using the helper function
+      await refreshStudentsData();
     }
   };
 
@@ -168,88 +187,154 @@ const TeacherDashboard = () => {
     );
   }
 
-  const teacherClass = getTeacherClass(userData?.email);
+  const teacherClasses = getTeacherClasses(userData?.email) || [];
+  const teacherClassDisplay = teacherClasses.length > 0 ? teacherClasses.join(', ') : 'No classes assigned';
 
   const renderTabContent = () => {
     switch (activeTab) {
       case 'students':
+        const availableClasses = Object.keys(studentsByClass);
+        const currentClassStudents = studentsByClass[activeClassTab] || [];
+        
         return (
-          <div className="bg-white rounded-lg border">
-            <div className="p-6 border-b">
-              <h3 className="text-xl font-semibold text-gray-800">Class Students - {teacherClass}</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll Number</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attendance</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {students.map((student) => (
-                    <tr key={student.parentEmail} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm font-medium text-gray-900">{student.name}</div>
-                        <div className="text-sm text-gray-500">{student.class}</div>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        {student.rollNumber}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          student.attendance.percentage >= 90 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {student.attendance.percentage}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                        <button
-                          onClick={() => setSelectedStudent(student)}
-                          className="text-green-600 hover:text-green-900 mr-3"
-                        >
-                          Manage
-                        </button>
-                      </td>
-                    </tr>
+          <div className="space-y-6">
+            {/* Class Tabs */}
+            {availableClasses.length > 1 && (
+              <div className="border-b border-gray-200">
+                <nav className="flex space-x-8" aria-label="Class Tabs">
+                  {availableClasses.map((className) => (
+                    <button
+                      key={className}
+                      onClick={() => setActiveClassTab(className)}
+                      className={`py-3 px-1 border-b-2 font-medium text-sm ${
+                        activeClassTab === className
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {className}
+                      <span className="ml-2 bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
+                        {studentsByClass[className].length}
+                      </span>
+                    </button>
                   ))}
-                </tbody>
-              </table>
+                </nav>
+              </div>
+            )}
+            
+            {/* Students Table for Selected Class */}
+            <div className="bg-white rounded-lg border">
+              <div className="p-6 border-b">
+                <h3 className="text-xl font-semibold text-gray-800">
+                  Class Students - {activeClassTab}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {currentClassStudents.length} student{currentClassStudents.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Student</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Roll Number</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Attendance</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {currentClassStudents.map((student) => (
+                      <tr key={student.parentEmail} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                          <div className="text-sm text-gray-500">{student.class}</div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                          {student.rollNumber}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            student.attendance.percentage >= 90 
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {student.attendance.percentage}%
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          <button
+                            onClick={() => setSelectedStudent(student)}
+                            className="text-green-600 hover:text-green-900 mr-3"
+                          >
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         );
 
       case 'attendance':
+        const availableClassesForAttendance = Object.keys(studentsByClass);
+        const currentClassStudentsForAttendance = studentsByClass[activeClassTab] || [];
+        
         return (
-          <div className="bg-white rounded-lg border p-6">
-            <h3 className="text-xl font-semibold text-gray-800 mb-6">Mark Attendance - {teacherClass}</h3>
-            <div className="space-y-4">
-              {students.map((student) => (
-                <div key={student.parentEmail} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <div className="font-medium text-gray-900">{student.name}</div>
-                    <div className="text-sm text-gray-500">Roll: {student.rollNumber}</div>
-                  </div>
-                  <div className="flex space-x-2">
+          <div className="space-y-6">
+            {/* Class Tabs for Attendance */}
+            {availableClassesForAttendance.length > 1 && (
+              <div className="border-b border-gray-200">
+                <nav className="flex space-x-8" aria-label="Class Tabs">
+                  {availableClassesForAttendance.map((className) => (
                     <button
-                      onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'present')}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+                      key={className}
+                      onClick={() => setActiveClassTab(className)}
+                      className={`py-3 px-1 border-b-2 font-medium text-sm ${
+                        activeClassTab === className
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
                     >
-                      Present
+                      {className}
+                      <span className="ml-2 bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
+                        {studentsByClass[className].length}
+                      </span>
                     </button>
-                    <button
-                      onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'absent')}
-                      className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm"
-                    >
-                      Absent
-                    </button>
+                  ))}
+                </nav>
+              </div>
+            )}
+            
+            {/* Attendance Section for Selected Class */}
+            <div className="bg-white rounded-lg border p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">Mark Attendance - {activeClassTab}</h3>
+              <div className="space-y-4">
+                {currentClassStudentsForAttendance.map((student) => (
+                  <div key={student.parentEmail} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div>
+                      <div className="font-medium text-gray-900">{student.name}</div>
+                      <div className="text-sm text-gray-500">Roll: {student.rollNumber}</div>
+                    </div>
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'present')}
+                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+                      >
+                        Present
+                      </button>
+                      <button
+                        onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'absent')}
+                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm"
+                      >
+                        Absent
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
         );
@@ -267,7 +352,7 @@ const TeacherDashboard = () => {
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold text-gray-800">Teacher Dashboard</h1>
-              <p className="text-sm text-gray-600">Welcome, {userData?.name || 'Teacher'} - {teacherClass}</p>
+              <p className="text-sm text-gray-600">Welcome, {userData?.name || 'Teacher'} - {teacherClassDisplay}</p>
             </div>
             <button
               onClick={handleLogout}
