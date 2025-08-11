@@ -409,8 +409,10 @@ function AuthProvider({ children }) {
           .from('attendance')
           .upsert({
             student_id: student.id,
-            date: new Date().toISOString().split('T')[0],
+            date: updates.attendance.date || new Date().toISOString().split('T')[0],
             status: updates.attendance.status || 'present'
+          }, {
+            onConflict: 'student_id,date'
           });
       }
 
@@ -424,6 +426,8 @@ function AuthProvider({ children }) {
               subject,
               grade: gradeData.grade,
               score: gradeData.score
+            }, {
+              onConflict: 'student_id,subject'
             });
         }
       }

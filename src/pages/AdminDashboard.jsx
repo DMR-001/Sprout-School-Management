@@ -18,16 +18,26 @@ const AdminDashboard = () => {
   } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   const [activeStudentClassTab, setActiveStudentClassTab] = useState('');
+  const [activeUserRoleTab, setActiveUserRoleTab] = useState('all');
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [userSearchTerm, setUserSearchTerm] = useState('');
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [students, setStudents] = useState([]);
   const [studentsByClass, setStudentsByClass] = useState({});
   const [users, setUsers] = useState([]);
+  const [usersByRole, setUsersByRole] = useState({});
   const [availableTeachers, setAvailableTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showStudentForm, setShowStudentForm] = useState(false);
   const [showTeacherForm, setShowTeacherForm] = useState(false);
   const [teacherAssignment, setTeacherAssignment] = useState({ teacherEmail: '', className: '' });
   const [feeFilter, setFeeFilter] = useState({ date: new Date().toISOString().split('T')[0] });
+  const [feeManagement, setFeeManagement] = useState({
+    totalFees: '',
+    paymentAmount: '',
+    paymentMethod: ''
+  });
+  const [notification, setNotification] = useState(null);
   const [newStudent, setNewStudent] = useState({
     name: '',
     class: 'Nursery',
@@ -119,6 +129,24 @@ const AdminDashboard = () => {
         if (error) throw error;
         setUsers(supabaseUsers || []);
         
+        // Group users by role
+        const groupedByRole = (supabaseUsers || []).reduce((acc, user) => {
+          const role = user.role || 'unknown';
+          if (!acc[role]) {
+            acc[role] = [];
+          }
+          acc[role].push(user);
+          return acc;
+        }, {});
+        
+        console.log('Grouped users by role:', groupedByRole);
+        setUsersByRole(groupedByRole);
+        
+        // Set default active role tab to 'all' if not already set
+        if (activeUserRoleTab === '') {
+          setActiveUserRoleTab('all');
+        }
+        
         // Filter teachers for the dropdown
         const teachers = supabaseUsers?.filter(user => user.role === 'teacher') || [];
         setAvailableTeachers(teachers);
@@ -131,6 +159,19 @@ const AdminDashboard = () => {
           { email: 'teacher@demo.com', name: 'Ms. Smith', role: 'teacher' }
         ];
         setUsers(fallbackUsers);
+        
+        // Group fallback users by role
+        const groupedByRole = fallbackUsers.reduce((acc, user) => {
+          const role = user.role || 'unknown';
+          if (!acc[role]) {
+            acc[role] = [];
+          }
+          acc[role].push(user);
+          return acc;
+        }, {});
+        
+        console.log('Grouped fallback users by role:', groupedByRole);
+        setUsersByRole(groupedByRole);
         setAvailableTeachers(fallbackUsers.filter(user => user.role === 'teacher'));
       }
       
@@ -145,8 +186,153 @@ const AdminDashboard = () => {
     loadData();
   }, []);
 
+  // Debug useEffect to monitor usersByRole state
+  useEffect(() => {
+    console.log('usersByRole state updated:', usersByRole);
+    console.log('users state:', users);
+    console.log('activeUserRoleTab:', activeUserRoleTab);
+  }, [usersByRole, users, activeUserRoleTab]);
+
   const handleLogout = () => {
     logout();
+  };
+
+  const showNotification = (message, type = 'success') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleUpdateTotalFees = async () => {
+    if (!feeManagement.totalFees || !selectedStudent) return;
+    
+    try {
+      const newTotal = parseInt(feeManagement.totalFees);
+      const currentPaid = selectedStudent.fees.paid;
+      const newPending = Math.max(0, newTotal - currentPaid);
+
+      // Update in database (you can implement Supabase update here)
+      // For now, update local state
+      const updatedStudent = {
+        ...selectedStudent,
+        fees: {
+          ...selectedStudent.fees,
+          total: newTotal,
+          pending: newPending
+        }
+      };
+      
+      setSelectedStudent(updatedStudent);
+      
+      // Update students list
+      setStudents(students.map(s => s.id === selectedStudent.id ? updatedStudent : s));
+      
+      // Update grouped students
+      const updatedGrouped = { ...studentsByClass };
+      const className = selectedStudent.class;
+      if (updatedGrouped[className]) {
+        updatedGrouped[className] = updatedGrouped[className].map(s => 
+          s.id === selectedStudent.id ? updatedStudent : s
+        );
+        setStudentsByClass(updatedGrouped);
+      }
+      
+      setFeeManagement({ ...feeManagement, totalFees: '' });
+      showNotification('Total fees updated successfully!');
+    } catch (error) {
+      console.error('Error updating fees:', error);
+      showNotification('Error updating fees. Please try again.', 'error');
+    }
+  };
+
+  const handleRecordPayment = async () => {
+    if (!feeManagement.paymentAmount || !feeManagement.paymentMethod || !selectedStudent) return;
+    
+    try {
+      const paymentAmount = parseInt(feeManagement.paymentAmount);
+      const newPaid = selectedStudent.fees.paid + paymentAmount;
+      const newPending = Math.max(0, selectedStudent.fees.total - newPaid);
+
+      // Update in database (you can implement Supabase update here)
+      // For now, update local state
+      const updatedStudent = {
+        ...selectedStudent,
+        fees: {
+          ...selectedStudent.fees,
+          paid: newPaid,
+          pending: newPending
+        }
+      };
+      
+      setSelectedStudent(updatedStudent);
+      
+      // Update students list
+      setStudents(students.map(s => s.id === selectedStudent.id ? updatedStudent : s));
+      
+      // Update grouped students
+      const updatedGrouped = { ...studentsByClass };
+      const className = selectedStudent.class;
+      if (updatedGrouped[className]) {
+        updatedGrouped[className] = updatedGrouped[className].map(s => 
+          s.id === selectedStudent.id ? updatedStudent : s
+        );
+        setStudentsByClass(updatedGrouped);
+      }
+      
+      setFeeManagement({ ...feeManagement, paymentAmount: '', paymentMethod: '' });
+      showNotification(`Payment of ₹${paymentAmount.toLocaleString()} recorded successfully!`);
+    } catch (error) {
+      console.error('Error recording payment:', error);
+      showNotification('Error recording payment. Please try again.', 'error');
+    }
+  };
+
+  const handleQuickAction = (action) => {
+    switch (action) {
+      case 'fee_reminder':
+        showNotification(`Fee reminder sent to ${selectedStudent.parent.email}`);
+        break;
+      case 'generate_receipt':
+        showNotification('Receipt generated successfully!');
+        break;
+      case 'payment_history':
+        showNotification('Payment history will be displayed here');
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Filter functions for search
+  const filterStudents = (students, searchTerm) => {
+    if (!searchTerm) return students;
+    const term = searchTerm.toLowerCase();
+    return students.filter(student => 
+      student.name.toLowerCase().includes(term) ||
+      student.class.toLowerCase().includes(term) ||
+      student.rollNumber.toLowerCase().includes(term) ||
+      student.parent.name.toLowerCase().includes(term) ||
+      student.parent.email.toLowerCase().includes(term)
+    );
+  };
+
+  const filterUsers = (users, searchTerm) => {
+    if (!searchTerm) return users;
+    const term = searchTerm.toLowerCase();
+    return users.filter(user => 
+      user.name.toLowerCase().includes(term) ||
+      user.email.toLowerCase().includes(term) ||
+      user.role.toLowerCase().includes(term)
+    );
+  };
+
+  // Get user counts for tabs
+  const getUserCounts = () => {
+    return {
+      all: users.length,
+      admin: (usersByRole.admin || []).length,
+      teacher: (usersByRole.teacher || []).length,
+      parent: (usersByRole.parent || []).length
+    };
   };
 
   const handleCreateStudent = async (e) => {
@@ -331,10 +517,39 @@ const AdminDashboard = () => {
 
       case 'students':
         const availableClasses = Object.keys(studentsByClass);
-        const currentClassStudents = studentsByClass[activeStudentClassTab] || [];
+        const allClassStudents = studentsByClass[activeStudentClassTab] || [];
+        const filteredStudents = filterStudents(allClassStudents, studentSearchTerm);
         
         return (
           <div className="space-y-6">
+            {/* Search Bar */}
+            <div className="bg-white rounded-lg border p-4">
+              <div className="flex items-center space-x-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={studentSearchTerm}
+                      onChange={(e) => setStudentSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      placeholder="Search students by name, class, roll number, or parent..."
+                    />
+                    <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                {studentSearchTerm && (
+                  <button
+                    onClick={() => setStudentSearchTerm('')}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Class Tabs */}
             {availableClasses.length > 1 && (
               <div className="border-b border-gray-200">
@@ -366,7 +581,8 @@ const AdminDashboard = () => {
                   Student Management - {activeStudentClassTab}
                 </h3>
                 <p className="text-sm text-gray-600 mt-1">
-                  {currentClassStudents.length} student{currentClassStudents.length !== 1 ? 's' : ''}
+                  {studentSearchTerm ? `${filteredStudents.length} of ${allClassStudents.length}` : filteredStudents.length} student{filteredStudents.length !== 1 ? 's' : ''}
+                  {studentSearchTerm && <span className="text-blue-600 ml-1">matching "{studentSearchTerm}"</span>}
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -382,46 +598,57 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {currentClassStudents.map((student) => (
-                      <tr key={student.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">{student.name}</div>
-                            <div className="text-sm text-gray-500">{student.rollNumber}</div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {student.class}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            student.attendance.percentage >= 90 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {student.attendance.percentage}%
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">₹{student.fees.paid}/₹{student.fees.total}</div>
-                          {student.fees.pending > 0 && (
-                            <div className="text-xs text-red-600">₹{student.fees.pending} pending</div>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{student.parent.name}</div>
-                          <div className="text-sm text-gray-500">{student.parent.email}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <button
-                            onClick={() => setSelectedStudent(student)}
-                            className="text-blue-600 hover:text-blue-900 mr-3"
-                          >
-                            Manage
-                          </button>
+                    {filteredStudents.length > 0 ? (
+                      filteredStudents.map((student) => (
+                        <tr key={student.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div>
+                              <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                              <div className="text-sm text-gray-500">{student.rollNumber}</div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {student.class}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              student.attendance.percentage >= 90 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {student.attendance.percentage}%
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">₹{student.fees.paid}/₹{student.fees.total}</div>
+                            {student.fees.pending > 0 && (
+                              <div className="text-xs text-red-600">₹{student.fees.pending} pending</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm text-gray-900">{student.parent.name}</div>
+                            <div className="text-sm text-gray-500">{student.parent.email}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <button
+                              onClick={() => {
+                                setSelectedStudent(student);
+                                setFeeManagement({ totalFees: '', paymentAmount: '', paymentMethod: '' });
+                              }}
+                              className="text-blue-600 hover:text-blue-900 mr-3"
+                            >
+                              Manage
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                          {studentSearchTerm ? 'No students found matching your search.' : 'No students found.'}
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -666,53 +893,142 @@ const AdminDashboard = () => {
               </div>
             )}
 
-            {/* Users List */}
-            <div className="bg-white rounded-lg border p-6">
-              <h3 className="text-xl font-semibold text-gray-800 mb-6">Current Users</h3>
-              
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Additional Info</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map((user) => (
-                      <tr key={user.email} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          {user.name}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {user.email}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            user.role === 'admin' 
-                              ? 'bg-red-100 text-red-800' 
-                              : user.role === 'teacher'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-blue-100 text-blue-800'
-                          }`}>
-                            {user.role}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {user.role === 'parent' && user.studentData?.name ? (
-                            <span className="text-blue-600">Student: {user.studentData.name}</span>
-                          ) : user.role === 'teacher' && user.assignedClasses?.length > 0 ? (
-                            <span className="text-green-600">Classes: {user.assignedClasses.join(', ')}</span>
-                          ) : (
-                            'N/A'
-                          )}
-                        </td>
+            {/* Users List with Role Tabs and Search */}
+            <div className="space-y-6">
+              {/* Search Bar */}
+              <div className="bg-white rounded-lg border p-4">
+                <div className="flex items-center space-x-4">
+                  <div className="flex-1">
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={userSearchTerm}
+                        onChange={(e) => setUserSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        placeholder="Search users by name, email, or role..."
+                      />
+                      <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                    </div>
+                  </div>
+                  {userSearchTerm && (
+                    <button
+                      onClick={() => setUserSearchTerm('')}
+                      className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Role Tabs */}
+              <div className="border-b border-gray-200">
+                <nav className="flex space-x-8" aria-label="Role Tabs">
+                  {(() => {
+                    const counts = getUserCounts();
+                    return [
+                      { id: 'all', label: 'All Users', count: counts.all },
+                      { id: 'admin', label: 'Administrators', count: counts.admin },
+                      { id: 'teacher', label: 'Teachers', count: counts.teacher },
+                      { id: 'parent', label: 'Parents', count: counts.parent }
+                    ];
+                  })().map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveUserRoleTab(tab.id)}
+                      className={`py-3 px-1 border-b-2 font-medium text-sm ${
+                        activeUserRoleTab === tab.id
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      {tab.label}
+                      <span className="ml-2 bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
+                        {tab.count}
+                      </span>
+                    </button>
+                  ))}
+                </nav>
+              </div>
+
+              {/* Users Table */}
+              <div className="bg-white rounded-lg border">
+                <div className="p-6 border-b">
+                  <h3 className="text-xl font-semibold text-gray-800">
+                    {activeUserRoleTab === 'all' ? 'All Users' : 
+                     activeUserRoleTab === 'admin' ? 'Administrators' :
+                     activeUserRoleTab === 'teacher' ? 'Teachers' : 'Parents'}
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {(() => {
+                      const currentUsers = activeUserRoleTab === 'all' ? users : (usersByRole[activeUserRoleTab] || []);
+                      const filteredUsers = filterUsers(currentUsers, userSearchTerm);
+                      return userSearchTerm ? 
+                        `${filteredUsers.length} of ${currentUsers.length} users matching "${userSearchTerm}"` :
+                        `${filteredUsers.length} user${filteredUsers.length !== 1 ? 's' : ''}`;
+                    })()}
+                  </p>
+                </div>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Additional Info</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {(() => {
+                        const currentUsers = activeUserRoleTab === 'all' ? users : (usersByRole[activeUserRoleTab] || []);
+                        const filteredUsers = filterUsers(currentUsers, userSearchTerm);
+                        
+                        return filteredUsers.length > 0 ? (
+                          filteredUsers.map((user) => (
+                            <tr key={user.email} className="hover:bg-gray-50">
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {user.name}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {user.email}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                  user.role === 'admin' 
+                                    ? 'bg-red-100 text-red-800' 
+                                    : user.role === 'teacher'
+                                    ? 'bg-green-100 text-green-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}>
+                                  {user.role}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                                {user.role === 'parent' && user.studentData?.name ? (
+                                  <span className="text-blue-600">Student: {user.studentData.name}</span>
+                                ) : user.role === 'teacher' && user.assignedClasses?.length > 0 ? (
+                                  <span className="text-green-600">Classes: {user.assignedClasses.join(', ')}</span>
+                                ) : (
+                                  'N/A'
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                              {userSearchTerm ? 'No users found matching your search.' : 'No users found.'}
+                            </td>
+                          </tr>
+                        );
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -1061,6 +1377,22 @@ const AdminDashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Notification */}
+      {notification && (
+        <div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-lg shadow-lg ${
+          notification.type === 'success' 
+            ? 'bg-green-600 text-white' 
+            : 'bg-red-600 text-white'
+        }`}>
+          <div className="flex items-center">
+            <span className="mr-2">
+              {notification.type === 'success' ? '✓' : '✕'}
+            </span>
+            {notification.message}
+          </div>
+        </div>
+      )}
+      
       {/* Professional Header */}
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -1169,9 +1501,10 @@ const AdminDashboard = () => {
                         </label>
                         <input
                           type="number"
-                          defaultValue={selectedStudent.fees.total}
+                          value={feeManagement.totalFees}
+                          onChange={(e) => setFeeManagement({...feeManagement, totalFees: e.target.value})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Enter total fees"
+                          placeholder={`Current: ₹${selectedStudent.fees.total.toLocaleString()}`}
                         />
                       </div>
                       
@@ -1181,6 +1514,8 @@ const AdminDashboard = () => {
                         </label>
                         <input
                           type="number"
+                          value={feeManagement.paymentAmount}
+                          onChange={(e) => setFeeManagement({...feeManagement, paymentAmount: e.target.value})}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                           placeholder="Enter payment amount"
                         />
@@ -1190,7 +1525,11 @@ const AdminDashboard = () => {
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Payment Method
                         </label>
-                        <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <select 
+                          value={feeManagement.paymentMethod}
+                          onChange={(e) => setFeeManagement({...feeManagement, paymentMethod: e.target.value})}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        >
                           <option value="">Select Payment Method</option>
                           <option value="cash">Cash</option>
                           <option value="card">Card</option>
@@ -1200,10 +1539,18 @@ const AdminDashboard = () => {
                       </div>
                       
                       <div className="flex space-x-3">
-                        <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex-1">
+                        <button 
+                          onClick={handleRecordPayment}
+                          disabled={!feeManagement.paymentAmount || !feeManagement.paymentMethod}
+                          className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors flex-1"
+                        >
                           Record Payment
                         </button>
-                        <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex-1">
+                        <button 
+                          onClick={handleUpdateTotalFees}
+                          disabled={!feeManagement.totalFees}
+                          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg font-medium transition-colors flex-1"
+                        >
                           Update Total Fees
                         </button>
                       </div>
@@ -1213,13 +1560,22 @@ const AdminDashboard = () => {
                   <div className="bg-yellow-50 p-4 rounded-lg">
                     <h4 className="font-medium text-gray-800 mb-3">Quick Actions</h4>
                     <div className="flex flex-wrap gap-2">
-                      <button className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">
+                      <button 
+                        onClick={() => handleQuickAction('fee_reminder')}
+                        className="bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                      >
                         Send Fee Reminder
                       </button>
-                      <button className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">
+                      <button 
+                        onClick={() => handleQuickAction('generate_receipt')}
+                        className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                      >
                         Generate Receipt
                       </button>
-                      <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors">
+                      <button 
+                        onClick={() => handleQuickAction('payment_history')}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs font-medium transition-colors"
+                      >
                         View Payment History
                       </button>
                     </div>

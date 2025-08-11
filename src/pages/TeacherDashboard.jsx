@@ -5,6 +5,8 @@ const TeacherDashboard = () => {
   const { userData, logout, getTeacherClasses, getTeacherClass, getStudentsByTeacher, updateStudentData, teacherClassMapping } = useAuth();
   const [activeTab, setActiveTab] = useState('students');
   const [activeClassTab, setActiveClassTab] = useState('');
+  const [studentSearchTerm, setStudentSearchTerm] = useState('');
+  const [attendanceSearchTerm, setAttendanceSearchTerm] = useState('');
   const [students, setStudents] = useState([]);
   const [studentsByClass, setStudentsByClass] = useState({});
   const [loading, setLoading] = useState(true);
@@ -122,6 +124,17 @@ const TeacherDashboard = () => {
     logout();
   };
 
+  // Filter function for search
+  const filterStudents = (students, searchTerm) => {
+    if (!searchTerm) return students;
+    const term = searchTerm.toLowerCase();
+    return students.filter(student => 
+      student.name.toLowerCase().includes(term) ||
+      student.class.toLowerCase().includes(term) ||
+      student.rollNumber.toLowerCase().includes(term)
+    );
+  };
+
   const showNotification = (message, type = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
@@ -207,10 +220,39 @@ const TeacherDashboard = () => {
     switch (activeTab) {
       case 'students':
         const availableClasses = Object.keys(studentsByClass);
-        const currentClassStudents = studentsByClass[activeClassTab] || [];
+        const allClassStudents = studentsByClass[activeClassTab] || [];
+        const filteredStudents = filterStudents(allClassStudents, studentSearchTerm);
         
         return (
           <div className="space-y-6">
+            {/* Search Bar */}
+            <div className="bg-white rounded-lg border p-4">
+              <div className="flex items-center space-x-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={studentSearchTerm}
+                      onChange={(e) => setStudentSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="Search students by name, class, or roll number..."
+                    />
+                    <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                {studentSearchTerm && (
+                  <button
+                    onClick={() => setStudentSearchTerm('')}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Class Tabs */}
             {availableClasses.length > 1 && (
               <div className="border-b border-gray-200">
@@ -242,7 +284,8 @@ const TeacherDashboard = () => {
                   Class Students - {activeClassTab}
                 </h3>
                 <p className="text-sm text-gray-600 mt-1">
-                  {currentClassStudents.length} student{currentClassStudents.length !== 1 ? 's' : ''}
+                  {studentSearchTerm ? `${filteredStudents.length} of ${allClassStudents.length}` : filteredStudents.length} student{filteredStudents.length !== 1 ? 's' : ''}
+                  {studentSearchTerm && <span className="text-green-600 ml-1">matching "{studentSearchTerm}"</span>}
                 </p>
               </div>
               <div className="overflow-x-auto">
@@ -256,34 +299,42 @@ const TeacherDashboard = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {currentClassStudents.map((student) => (
-                      <tr key={student.parentEmail} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{student.name}</div>
-                          <div className="text-sm text-gray-500">{student.class}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          {student.rollNumber}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                            student.attendance.percentage >= 90 
-                              ? 'bg-green-100 text-green-800' 
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}>
-                            {student.attendance.percentage}%
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                          <button
-                            onClick={() => setSelectedStudent(student)}
-                            className="text-green-600 hover:text-green-900 mr-3"
-                          >
-                            Manage
-                          </button>
+                    {filteredStudents.length > 0 ? (
+                      filteredStudents.map((student) => (
+                        <tr key={student.parentEmail} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{student.name}</div>
+                            <div className="text-sm text-gray-500">{student.class}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {student.rollNumber}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              student.attendance.percentage >= 90 
+                                ? 'bg-green-100 text-green-800' 
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {student.attendance.percentage}%
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <button
+                              onClick={() => setSelectedStudent(student)}
+                              className="text-green-600 hover:text-green-900 mr-3"
+                            >
+                              Manage
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                          {studentSearchTerm ? 'No students found matching your search.' : 'No students found.'}
                         </td>
                       </tr>
-                    ))}
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -293,10 +344,39 @@ const TeacherDashboard = () => {
 
       case 'attendance':
         const availableClassesForAttendance = Object.keys(studentsByClass);
-        const currentClassStudentsForAttendance = studentsByClass[activeClassTab] || [];
+        const allClassStudentsForAttendance = studentsByClass[activeClassTab] || [];
+        const filteredStudentsForAttendance = filterStudents(allClassStudentsForAttendance, attendanceSearchTerm);
         
         return (
           <div className="space-y-6">
+            {/* Search Bar */}
+            <div className="bg-white rounded-lg border p-4">
+              <div className="flex items-center space-x-4">
+                <div className="flex-1">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={attendanceSearchTerm}
+                      onChange={(e) => setAttendanceSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="Search students for attendance..."
+                    />
+                    <svg className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                  </div>
+                </div>
+                {attendanceSearchTerm && (
+                  <button
+                    onClick={() => setAttendanceSearchTerm('')}
+                    className="px-4 py-2 text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Class Tabs for Attendance */}
             {availableClassesForAttendance.length > 1 && (
               <div className="border-b border-gray-200">
@@ -323,30 +403,42 @@ const TeacherDashboard = () => {
             
             {/* Attendance Section for Selected Class */}
             <div className="bg-white rounded-lg border p-6">
-              <h3 className="text-xl font-semibold text-gray-800 mb-6">Mark Attendance - {activeClassTab}</h3>
+              <div className="mb-6">
+                <h3 className="text-xl font-semibold text-gray-800">Mark Attendance - {activeClassTab}</h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {attendanceSearchTerm ? `${filteredStudentsForAttendance.length} of ${allClassStudentsForAttendance.length}` : filteredStudentsForAttendance.length} student{filteredStudentsForAttendance.length !== 1 ? 's' : ''}
+                  {attendanceSearchTerm && <span className="text-green-600 ml-1">matching "{attendanceSearchTerm}"</span>}
+                </p>
+              </div>
               <div className="space-y-4">
-                {currentClassStudentsForAttendance.map((student) => (
-                  <div key={student.parentEmail} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div>
-                      <div className="font-medium text-gray-900">{student.name}</div>
-                      <div className="text-sm text-gray-500">Roll: {student.rollNumber}</div>
+                {filteredStudentsForAttendance.length > 0 ? (
+                  filteredStudentsForAttendance.map((student) => (
+                    <div key={student.parentEmail} className="flex items-center justify-between p-4 border rounded-lg">
+                      <div>
+                        <div className="font-medium text-gray-900">{student.name}</div>
+                        <div className="text-sm text-gray-500">Roll: {student.rollNumber}</div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'present')}
+                          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
+                        >
+                          Present
+                        </button>
+                        <button
+                          onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'absent')}
+                          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm"
+                        >
+                          Absent
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'present')}
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm"
-                      >
-                        Present
-                      </button>
-                      <button
-                        onClick={() => updateAttendance(student.parentEmail, new Date().toISOString().split('T')[0], 'absent')}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm"
-                      >
-                        Absent
-                      </button>
-                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    {attendanceSearchTerm ? 'No students found matching your search.' : 'No students found.'}
                   </div>
-                ))}
+                )}
               </div>
             </div>
           </div>
